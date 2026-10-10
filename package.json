@@ -1,7 +1,7 @@
 {
   "name": "vscode-settings-tidy",
   "version": "0.0.0",
-  "description": "A starter for creating a TypeScript package.",
+  "description": "Reorganises a VS Code settings.json into commented categories.",
   "homepage": "https://github.com/author/library#readme",
   "bugs": {
     "url": "https://github.com/author/library/issues"
@@ -29,7 +29,11 @@
     "test": "vp test",
     "check": "vp check",
     "prepublishOnly": "vp run build",
-    "prepare": "vp config"
+    "prepare": "vp config",
+    "tidy": "node src/cli.ts"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
