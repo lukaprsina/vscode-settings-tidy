@@ -20,7 +20,6 @@ export const categories: Category[] = [
   {
     name: "Editor: behavior",
     keys: [
-      "editor.inlineSuggest.enabled",
       "editor.formatOnPaste",
       "editor.formatOnSave",
       "editor.linkedEditing",
@@ -36,7 +35,6 @@ export const categories: Category[] = [
     name: "Workbench / UI",
     keys: [
       "workbench.iconTheme",
-      "workbench.experimental.modernUI",
       "workbench.startupEditor",
       "workbench.editor.empty.hint",
       "workbench.list.horizontalScrolling",
