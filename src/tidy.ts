@@ -8,11 +8,14 @@ import {
   type ParseError,
 } from "jsonc-parser";
 import type { Category } from "./categories.ts";
+import { resolveExtensions, type ExtensionsResult } from "./resolve-extensions.ts";
 
 export interface TidyInput {
   settings: string;
   defaults: string;
   categories: Category[];
+  /** When given, `dev.containers.defaultExtensions` is generated from these. */
+  extensions?: { installed: string; patterns: string[] };
 }
 
 export type WarningKind =
@@ -21,7 +24,11 @@ export type WarningKind =
   | "unknown"
   | "uncategorized"
   | "stale"
-  | "missing-sync-target";
+  | "missing-sync-target"
+  | "extension-stale"
+  | "extension-redundant"
+  | "extension-unlisted"
+  | "extension-overwritten";
 
 export interface Warning {
   kind: WarningKind;
@@ -40,6 +47,8 @@ const LINE_COMMENT = 12;
 const BLOCK_COMMENT = 13;
 const LINE_BREAK = 14;
 const EOF = 17;
+
+export const DEFAULT_EXTENSIONS_KEY = "dev.containers.defaultExtensions";
 
 const NEW_BANNER = "New (unsorted)";
 const BANNER = /^\/\/ ── .* ──$/;
@@ -60,11 +69,15 @@ interface Comment {
 
 /** Tidy `settings` into categories. Never throws; problems come back in `errors` (and `output` is then empty). */
 export function tidy(input: TidyInput): TidyResult {
-  const result = build(input);
+  const ext = input.extensions
+    ? resolveExtensions(input.extensions.installed, input.extensions.patterns)
+    : undefined;
+  const result = build(input, ext);
   if (result.errors.length) return { ...result, output: "" };
 
-  // Safety net: nothing lost, added or changed, and the output is a fixed point.
+  // Safety net: nothing lost, added or changed (except the generated key), and the output is a fixed point.
   const before = valueMap(input.settings);
+  if (ext) before.set(DEFAULT_EXTENSIONS_KEY, ext.ids);
   const after = valueMap(result.output);
   if (!isDeepStrictEqual(before, after)) {
     return {
@@ -73,7 +86,7 @@ export function tidy(input: TidyInput): TidyResult {
       errors: ["round-trip check failed: output settings differ from input"],
     };
   }
-  if (build({ ...input, settings: result.output }).output !== result.output) {
+  if (build({ ...input, settings: result.output }, ext).output !== result.output) {
     return {
       ...result,
       output: "",
@@ -83,7 +96,7 @@ export function tidy(input: TidyInput): TidyResult {
   return result;
 }
 
-function build(input: TidyInput): TidyResult {
+function build(input: TidyInput, ext: ExtensionsResult | undefined): TidyResult {
   const warnings: Warning[] = [];
   const errors: string[] = [];
 
@@ -103,6 +116,7 @@ function build(input: TidyInput): TidyResult {
   }
 
   const defaults = nodeEntries(parseJsonc(input.defaults, "defaultSettings.jsonc", errors));
+  if (ext) errors.push(...ext.errors);
 
   const { entries, orphans } = readEntries(input.settings, root);
   const seen = new Set<string>();
@@ -111,6 +125,25 @@ function build(input: TidyInput): TidyResult {
     seen.add(key);
   }
   if (errors.length) return { output: "", warnings, errors };
+
+  const values = nodeEntries(root);
+  if (ext) {
+    warnings.push(...ext.warnings);
+    const source = `${JSON.stringify(DEFAULT_EXTENSIONS_KEY)}: ${JSON.stringify(ext.ids, null, "\t").replaceAll("\n", "\n\t")}`;
+    const existing = entries.find((e) => e.key === DEFAULT_EXTENSIONS_KEY);
+    if (existing) {
+      if (!isDeepStrictEqual(values.get(DEFAULT_EXTENSIONS_KEY), ext.ids)) {
+        warnings.push({
+          kind: "extension-overwritten",
+          key: DEFAULT_EXTENSIONS_KEY,
+          message: `${DEFAULT_EXTENSIONS_KEY} in settings.json was replaced by the generated list`,
+        });
+      }
+      existing.source = source;
+    } else {
+      entries.push({ key: DEFAULT_EXTENSIONS_KEY, source, leading: [], trailing: "" });
+    }
+  }
   const byKey = new Map(entries.map((e) => [e.key, e]));
 
   const known = new Set<string>();
@@ -136,7 +169,6 @@ function build(input: TidyInput): TidyResult {
       });
     }
   }
-  const values = nodeEntries(root);
   for (const [key, value] of values) warnings.push(...compareToDefaults(key, value, defaults));
   const ignored = values.get("settingsSync.ignoredSettings");
   for (const key of Array.isArray(ignored) ? ignored : []) {

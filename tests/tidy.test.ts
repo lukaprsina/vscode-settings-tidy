@@ -189,3 +189,59 @@ describe("warnings against defaults", () => {
     expect(out).not.toContain("missing-sync-target:a.one");
   });
 });
+
+describe("default extensions", () => {
+  const installed = ["a.one", "a.two", "b.one", "Pub.Name", "z.last"].join("\n");
+  const ext = (patterns: string[], text = installed) => ({ installed: text, patterns });
+  const runExt = (patterns: string[], settings = "{}", text = installed) =>
+    tidy({ settings, defaults: "{}", categories: cats, extensions: ext(patterns, text) });
+  const kinds = (r: ReturnType<typeof runExt>) => r.warnings.map((w) => `${w.kind}:${w.key}`);
+
+  test("globs expand against the installed list, sorted, case-insensitive, written as a key", () => {
+    const r = runExt(["z.last", "a.*", "pub.name"]);
+    expect(r.errors).toEqual([]);
+    expect(r.output).toContain(
+      '\t"dev.containers.defaultExtensions": [\n\t\t"a.one",\n\t\t"a.two",\n\t\t"Pub.Name",\n\t\t"z.last"\n\t],',
+    );
+  });
+
+  test("! removes earlier matches", () => {
+    const r = runExt(["a.*", "!a.two"]);
+    expect(r.output).toContain('"a.one"');
+    expect(r.output).not.toContain('"a.two"');
+    expect(kinds(r)).not.toContain("extension-unlisted:a.two");
+  });
+
+  test("warns: stale, redundant, unlisted", () => {
+    const r = runExt(["a.*", "a.one", "nope.*"]);
+    expect(kinds(r)).toEqual(
+      expect.arrayContaining([
+        "extension-redundant:a.one",
+        "extension-stale:nope.*",
+        "extension-unlisted:b.one",
+        "extension-unlisted:z.last",
+      ]),
+    );
+  });
+
+  test("replaces an existing key (warning only when it differs) and is idempotent", () => {
+    const first = runExt(["a.*"]).output;
+    const again = runExt(["a.*"], first);
+    expect(again.errors).toEqual([]);
+    expect(again.output).toBe(first);
+    expect(kinds(again)).not.toContain("extension-overwritten:dev.containers.defaultExtensions");
+    const changed = runExt(["a.*"], '{ "dev.containers.defaultExtensions": ["x.y"] }');
+    expect(kinds(changed)).toContain("extension-overwritten:dev.containers.defaultExtensions");
+    expect(changed.output).not.toContain("x.y");
+  });
+
+  test("errors: bad pattern, duplicate pattern, bad or duplicate installed line", () => {
+    const errors = (patterns: string[], text = installed) => runExt(patterns, "{}", text).errors;
+    expect(errors(["bad pattern"])).toContainEqual(expect.stringContaining("not a valid"));
+    expect(errors(["a.*", "A.*"])).toContainEqual(expect.stringContaining("duplicate pattern"));
+    expect(errors(["a.*"], "nodot")).toContainEqual(expect.stringContaining("extensions.txt:1"));
+    expect(errors(["a.*"], "a.one\nA.One")).toContainEqual(
+      expect.stringContaining("duplicate extension"),
+    );
+  });
+});

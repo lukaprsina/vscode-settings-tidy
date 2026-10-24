@@ -92,6 +92,8 @@ export const categories: Category[] = [
       "remote.autoForwardPortsSource",
       "remote.SSH.remotePlatform",
       "remote.SSH.useExecServer",
+      // Generated from src/extensions.ts; do not edit by hand.
+      "dev.containers.defaultExtensions",
     ],
   },
   {
@@ -104,6 +106,7 @@ export const categories: Category[] = [
       "[jsonc]",
       "python.analysis.typeCheckingMode",
       "python.languageServer",
+      "python-envs.terminal.autoActivationType",
       "js/ts.experimental.useTsgo",
       // quotick: typing ${} inside a "..." string switches it to backticks (and back), for js*/ts*.
       "quotick.showWelcomeMessage",
@@ -113,6 +116,7 @@ export const categories: Category[] = [
       "makefile.configureOnOpen",
       "tinymist.lint.enabled",
       "jupyter.askForKernelRestart",
+      "jupytextSync.enabledMenus",
     ],
   },
   {
